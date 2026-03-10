@@ -1,60 +1,190 @@
 const db = require("../config/db");
 
+
 // Get wallet balance
 exports.getWallet = (userId) => {
   return new Promise((resolve, reject) => {
-    db.query("SELECT * FROM wallet WHERE user_id = ?", [userId], (err, result) => {
-      if (err) reject(err);
-      else resolve(result[0]);
-    });
+
+    console.log("Searching wallet for:", userId);
+
+    db.query(
+      "SELECT * FROM wallet WHERE user_id = ?",
+      [userId],
+      (err, result) => {
+
+        console.log("DB Result:", result);
+
+        if (err) return reject(err);
+
+        resolve(result[0]);
+
+      }
+    );
+
   });
 };
 
-// Deposit (auto approved)
+
+
+// Deposit
 exports.createDeposit = (userId, amount) => {
+
   return new Promise((resolve, reject) => {
-    db.query("INSERT INTO transactions (user_id, type, amount, status) VALUES (?, 'deposit', ?, 'approved')", [userId, amount], (err, result) => {
-      if (err) reject(err);
-      else {
-        // Update wallet balance
-        db.query("UPDATE wallet SET balance = balance + ? WHERE user_id = ?", [amount, userId], (err2) => {
-          if (err2) reject(err2);
-          else resolve({ transactionId: result.insertId, status: "approved" });
-        });
+
+    db.query(
+      "SELECT * FROM wallet WHERE user_id = ?",
+      [userId],
+      (err, wallet) => {
+
+        if (err) return reject(err);
+
+        // create wallet if not exist
+        if (wallet.length === 0) {
+
+          db.query(
+            "INSERT INTO wallet (user_id, balance) VALUES (?, ?)",
+            [userId, amount],
+            (err2) => {
+
+              if (err2) return reject(err2);
+
+              createTransaction();
+
+            }
+          );
+
+        } else {
+
+          db.query(
+            "UPDATE wallet SET balance = balance + ? WHERE user_id = ?",
+            [amount, userId],
+            (err3) => {
+
+              if (err3) return reject(err3);
+
+              createTransaction();
+
+            }
+          );
+
+        }
+
+        function createTransaction() {
+
+          db.query(
+            "INSERT INTO transactions (user_id, type, amount, status) VALUES (?, 'deposit', ?, 'approved')",
+            [userId, amount],
+            (err4, result4) => {
+
+              if (err4) return reject(err4);
+
+              resolve({
+                message: "Deposit successful",
+                transactionId: result4.insertId
+              });
+
+            }
+          );
+
+        }
+
       }
-    });
+    );
+
   });
+
 };
 
-// Withdraw (check balance)
+
+
+// Withdraw
 exports.createWithdraw = (userId, amount) => {
+
   return new Promise((resolve, reject) => {
-    db.query("SELECT balance FROM wallet WHERE user_id = ?", [userId], (err, result) => {
-      if (err) reject(err);
-      else if (!result[0] || result[0].balance < amount) reject("Insufficient Balance");
-      else {
-        // Record transaction
-        db.query("INSERT INTO transactions (user_id, type, amount, status) VALUES (?, 'withdraw', ?, 'approved')", [userId, amount], (err2, result2) => {
-          if (err2) reject(err2);
-          else {
-            // Update wallet balance
-            db.query("UPDATE wallet SET balance = balance - ? WHERE user_id = ?", [amount, userId], (err3) => {
-              if (err3) reject(err3);
-              else resolve({ transactionId: result2.insertId, status: "approved" });
-            });
+
+    db.query(
+      "SELECT balance FROM wallet WHERE user_id = ?",
+      [userId],
+      (err, result) => {
+
+        if (err) return reject(err);
+
+        if (!result[0]) {
+          return reject(new Error("Wallet not found"));
+        }
+
+        const currentBalance = parseFloat(result[0].balance);
+
+        if (currentBalance < amount) {
+          return reject(new Error("Insufficient balance"));
+        }
+
+        db.query(
+          "UPDATE wallet SET balance = balance - ? WHERE user_id = ?",
+          [amount, userId],
+          (err2) => {
+
+            if (err2) return reject(err2);
+
+            // updated balance fetch
+            db.query(
+              "SELECT balance FROM wallet WHERE user_id = ?",
+              [userId],
+              (err3, updatedWallet) => {
+
+                if (err3) return reject(err3);
+
+                const remainingBalance = updatedWallet[0].balance;
+
+                db.query(
+                  "INSERT INTO transactions (user_id, type, amount, status) VALUES (?, 'withdraw', ?, 'approved')",
+                  [userId, amount],
+                  (err4, result4) => {
+
+                    if (err4) return reject(err4);
+
+                    resolve({
+                      message: "Withdraw successful",
+                      withdrawnAmount: amount,
+                      remainingBalance: remainingBalance,
+                      transactionId: result4.insertId
+                    });
+
+                  }
+                );
+
+              }
+            );
+
           }
-        });
+        );
+
       }
-    });
+    );
+
   });
+
 };
 
-// Transaction history
+
+
+// Transactions history
 exports.getTransactions = (userId) => {
+
   return new Promise((resolve, reject) => {
-    db.query("SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC", [userId], (err, results) => {
-      if (err) reject(err);
-      else resolve(results);
-    });
+
+    db.query(
+      "SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC",
+      [userId],
+      (err, result) => {
+
+        if (err) return reject(err);
+
+        resolve(result);
+
+      }
+    );
+
   });
+
 };
