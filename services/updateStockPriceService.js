@@ -1,8 +1,9 @@
+const cron = require("node-cron");
 const db = require("../config/db");
 const { getStockPrice } = require("./stockPriceService");
 const { updateStockPrice } = require("../models/stockModel");
 
-exports.updateAllPrices = async () => {
+const updateAllPrices = async () => {
 
   const [stocks] = await db.promise().execute("SELECT symbol FROM stocks");
 
@@ -18,3 +19,10 @@ exports.updateAllPrices = async () => {
   }
 
 };
+
+cron.schedule("*/30 * * * * *", () => {
+  console.log("Updating stock prices...");
+  updateAllPrices();
+});
+
+module.exports = { updateAllPrices };
